@@ -1,0 +1,16 @@
+<RCC>
+    <qresource prefix="/">
+        <file>icons/palette-solid.svg</file>
+        <file>missing.svg</file>
+        <file>icons/background.svg</file>
+        <file>icons/edit-regular.svg</file>
+        <file>icons/font-solid.svg</file>
+        <file>icons/foreground.svg</file>
+        <file>icons/highlighter-solid.svg</file>
+        <file>icons/italic-solid.svg</file>
+        <file>icons/palette-solid.svg</file>
+        <file>icons/Sans nom-1 (5).svg</file>
+        <file>icons/style.svg</file>
+        <file>icons/underline-solid.svg</file>
+    </qresource>
+</RCC>
