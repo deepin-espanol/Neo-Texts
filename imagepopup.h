@@ -15,7 +15,7 @@ public:
     ~ImageViewer() override;
 
 public slots:
-    void open(const QString &filepath);
+    void open(QImage &image);
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;
@@ -26,6 +26,7 @@ private:
 
     DLabel *img_label_ = nullptr;
     DDialogCloseButton *close_button_;
+    QImage data;
 
     using QDialog::open;
 };

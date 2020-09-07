@@ -605,6 +605,13 @@ QMenu *DSplitedBar::menu() const
     return d->menu;
 }
 
+QMenu *DSplitedBar::leftMenu() const
+{
+    D_DC(DSplitedBar);
+
+    return d->m_iconmenu;
+}
+
 /*!
  * \~english @brief DSplitedBar::setMenu attaches a QMenu object to the title bar.
  * @param menu is the target menu.
@@ -619,7 +626,18 @@ void DSplitedBar::setMenu(QMenu *menu)
 
     d->menu = menu;
     if (d->menu) {
-        disconnect(this, &DSplitedBar::optionClicked, 0, 0);
+        disconnect(this, &DSplitedBar::optionClicked, nullptr, nullptr);
+        connect(this, &DSplitedBar::optionClicked, this, &DSplitedBar::showMenu);
+    }
+}
+
+void DSplitedBar::setLeftMenu(QMenu *menu)
+{
+    D_D(DSplitedBar);
+
+    d->m_iconmenu = menu;
+    if (d->m_iconmenu) {
+        disconnect(this, &DSplitedBar::optionClicked, nullptr, nullptr);
         connect(this, &DSplitedBar::optionClicked, this, &DSplitedBar::showMenu);
     }
 }

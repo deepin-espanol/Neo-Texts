@@ -27,18 +27,17 @@ ImageViewer::~ImageViewer()
  * @param filepath
  * @note 根据给定的图片文件路径，打开图片并全屏显示
  */
-void ImageViewer::open(const QString &filepath)
+void ImageViewer::open(QImage &im)
 {
-    qDebug() << Q_FUNC_INFO << filepath;
+    /*qDebug() << Q_FUNC_INFO << filepath;
 
     // Escape uri.
     QString abspath(filepath);
     if (abspath.contains("://")) {
         QUrl url(abspath);
         abspath = url.path();
-    }
-    QImage image;
-    QImageReader reader(abspath);
+    }*/
+    /*QImageReader reader(abspath);
     reader.setDecideFormatFromContent(true);
     if (reader.canRead()) {
         if (reader.read(&image)) {
@@ -49,29 +48,29 @@ void ImageViewer::open(const QString &filepath)
 
     } else {
         qDebug() << "can not read...." << reader.errorString();
-    }
+    }*/
     const QRect screen_rect = qApp->desktop()->screenGeometry(QCursor::pos());
     const int pixmap_max_width = static_cast<int>(screen_rect.width() * 0.8);
     const int pixmap_max_height = static_cast<int>(screen_rect.height() * 0.8);
 
-    if ((image.width() > pixmap_max_width) || (image.height() > pixmap_max_height)) {
-        image = image.scaled(pixmap_max_width, pixmap_max_height, Qt::KeepAspectRatio,
+    if ((im.width() > pixmap_max_width) || (im.height() > pixmap_max_height)) {
+        im = im.scaled(pixmap_max_width, pixmap_max_height, Qt::KeepAspectRatio,
                              Qt::SmoothTransformation);
     }
     //小图标不点击放大
-    if (image.width() < 50 && image.height() < 50) {
+    if (im.width() < 50 && im.height() < 50) {
         return;
     }
     this->move(screen_rect.topLeft());
     this->resize(screen_rect.size());
     this->showFullScreen();
 
-    img_label_->setPixmap(QPixmap::fromImage(image));
-    img_label_->setFixedSize(image.width(), image.height());
+    img_label_->setPixmap(QPixmap::fromImage(im));
+    img_label_->setFixedSize(im.width(), im.height());
 
     QRect img_rect = img_label_->rect();
-    img_rect.moveTo(static_cast<int>((screen_rect.width() - image.width()) / 2.0),
-                    static_cast<int>((screen_rect.height() - image.height()) / 2.0));
+    img_rect.moveTo(static_cast<int>((screen_rect.width() - im.width()) / 2.0),
+                    static_cast<int>((screen_rect.height() - im.height()) / 2.0));
     img_label_->move(img_rect.topLeft());
 
     //关闭按钮移到图片右上角

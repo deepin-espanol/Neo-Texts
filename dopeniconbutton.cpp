@@ -35,7 +35,7 @@ void DOpenIconButton::handleMenuRequest(QMenu *menu)
         QPoint center = mapToGlobal(QPoint(processAnchor(anchor_x), processAnchor(anchor_y)));
         int menuHeight = menu->sizeHint().height();
         int menuWidth = menu->sizeHint().width();
-        center.setY(center.y() - menuHeight);
+        center.setY(center.y() - menuHeight -10);
         center.setX(center.x() - menuWidth / 2);
         menu->exec(center);
     }

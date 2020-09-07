@@ -9,29 +9,156 @@
 #include <QImageReader>
 #include <QAbstractTextDocumentLayout>
 #include <QMimeData>
+#include <QNetworkReply>
+#include <QDesktopServices>
+#include <QNetworkDiskCache>
+#include <QDir>
+#include <DDialog>
+#include <DLineEdit>
 
 const QRegExp imageSupport("[\\w\\-.]+\\.(jpg|JPG|png|PNG|gif|GIF|jpeg|JPEG)");
+QRegExp imageInclusion("<img src=\"(http|https|ftp|file)://([a-zA-Z.]*)/([a-zA-Z0-9.?%/_\\-]*).(png|jpg|gif|JPEG|PNG|GIF)\" width=\"([0-9]*)\" height=\"([0-9]*)\" />");
+const QString imgp = "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b6/Image_created_with_a_mobile_phone.png/250px-Image_created_with_a_mobile_phone.png";
+
+const QRegularExpression imageURIP("(http|https|ftp|file)://([a-zA-Z0-9.]+)([a-zA-Z0-9.?%/_#\\\\-]+).(png|jpg|gif|JPEG|PNG|GIF)",
+                                   QRegularExpression::MultilineOption
+                                   | QRegularExpression::DotMatchesEverythingOption
+                                   | QRegularExpression::CaseInsensitiveOption);
 
 Editor::Editor(QWidget *parent) : QTextEdit(parent)
 {
-    this->setContent("That's wondeful bruh!");
-    this->setMargin(50);
     m_storage = new MobileStorage;
+    m_manager = new QNetworkAccessManager;
+    m_storage->editor = this;
+
+    imageInclusion.setMinimal(true);
+
     Q_EMIT this->newCursorAvailable(this->format(), false);
 
-    connect(m_storage, &MobileStorage::requestChanges, this, &Editor::applyTextCursor);
     connect(this, &Editor::newCursorAvailable, m_storage, &MobileStorage::setTextCharFormat);
+    connect(m_storage, &MobileStorage::requestChanges, this, &Editor::applyTextCursor);
+    connect(m_storage, &MobileStorage::addImage, this, &Editor::imageInsertion);
+    connect(m_storage, &MobileStorage::makeOutput, this, &Editor::generateOutput);
+    connect(m_storage, &MobileStorage::reqMenuPopup, this, &Editor::popupMenu);
+    connect(m_storage, &MobileStorage::reqRmUnderCursor, this, &Editor::removeUnderCursor);
+    connect(m_storage, &MobileStorage::requestImageByURL, this, &Editor::parseImageResourceRequest);
     connect(document(), &QTextDocument::cursorPositionChanged, this, [this](QTextCursor cursored) {
         Q_EMIT this->newCursorAvailable(cursored.charFormat(), cursored.selectedText().isEmpty());
     });
-    connect(m_storage, &MobileStorage::addImage, this, &Editor::imageInsertion);
+    this->setContent(QString("<p>That's wondeful bruh!</p><img src=\""+imgp+"\" width=\"250\" height=\"250\" />"));
 }
 
 Editor::~Editor() {}
 
+void Editor::parseImageResourceRequest(QUrl u)
+{
+    if (waitingRequests.contains(u) == false) {
+        waitingRequests << u;
+        _reply = m_manager->get(generate(u));
+        connect(_reply, &QNetworkReply::finished, this, &Editor::finished);
+        connect(_reply, qOverload<QNetworkReply::NetworkError>(&QNetworkReply::error), this, &Editor::error);
+        connect(_reply, &QNetworkReply::downloadProgress, this, &Editor::updateProgress);
+        toprocess++;
+        connect(_reply, qOverload<QNetworkReply::NetworkError>(&QNetworkReply::error), this, [this](QNetworkReply::NetworkError e) {qDebug() << e << ": " << _reply->errorString();});
+    }
+}
+
 void Editor::setContent(QString data)
 {
-    this->setHtml(data);
+    QDir d("/tmp/neotexts");
+    if (!d.exists()) {
+        d.mkdir("/tmp/neotexts");
+    }
+    this->setMargin(50);
+    imageInclusion.indexIn(data);
+    int MaxCaptures = imageInclusion.matchedLength();
+    for (int i = 0; i < MaxCaptures; ++i) {
+        if (imageInclusion.cap(i).contains(imageInclusion)) {
+            qDebug() << "Image data path found";
+            QString filePath = imageURIP.match(imageInclusion.cap(0)).captured(0);
+            if (QFile("/tmp/neotexts/"+filePath.replace("://", ":/").replace("/", "%")).exists() == false) {
+                parseImageResourceRequest(imageURIP.match(imageInclusion.cap(0)).captured(0));
+            } else {
+                qDebug() << "image already exists!";
+                QString value = "/tmp/neotexts/"+filePath.replace("://", ":/").replace("/", "%");
+                qDebug() << value;
+                QImage i = QImageReader(value).read();
+                document()->addResource(QTextDocument::ImageResource, QUrl(value), QVariant(i));
+            }
+        }
+    }
+    QString translated = data;
+    imageInclusion.indexIn(data);
+    for (int i = 0; i < MaxCaptures; ++i) {
+        if (imageInclusion.cap(i).contains(imageInclusion)) {
+            QString filePath = imageURIP.match(imageInclusion.cap(0)).captured(0);
+            QString result = "/tmp/neotexts/"+filePath.replace("://", ":/").replace("/", "%");
+            qDebug() << "\nLooking for:" << imageURIP.match(imageInclusion.cap(0)).captured(0) << "\n\nTo replace with:" << result << "\n";
+            translated.replace(imageURIP.match(imageInclusion.cap(0)).captured(0), result);
+        }
+    }
+    qDebug() << translated;
+    this->setHtml(translated);
+    this->setMargin(50);
+    this->document()->clearUndoRedoStacks();
+}
+
+QNetworkRequest Editor::generate(QUrl p)
+{
+    QNetworkRequest r(p);
+    r.setAttribute(QNetworkRequest::Attribute::FollowRedirectsAttribute, true);
+    return r;
+}
+
+void Editor::resizeEvent(QResizeEvent *e)
+{
+   // Q_EMIT sizeChanged(QSize(e->size().width(), e->size().height()-80));
+    this->QTextEdit::resizeEvent(e);
+}
+
+void Editor::error(QNetworkReply::NetworkError err)
+{
+    qDebug() << "Error while downloading data: " << err;
+    _reply->deleteLater();
+}
+
+void Editor::updateProgress(qint64 read, qint64 total)
+{
+    qDebug() << "Download state: " << read << "/" << total;
+}
+
+void Editor::finished()
+{
+    processed++;
+    QByteArray b = _reply->readAll();
+    QString result = "/tmp/neotexts/"+_reply->url().toString().replace("://", ":/").replace("/", "%");
+    qDebug() << result;
+    QFile file(result);
+    file.open(QIODevice::WriteOnly);
+    QDataStream out(&file);
+    file.write(b);
+    file.close();
+    QImage i = QImageReader(b).read();
+    document()->addResource(QTextDocument::ImageResource, QUrl(result), QVariant(i));
+    this->setLineWrapColumnOrWidth(this->lineWrapColumnOrWidth()); //Only way to make it reload our images (sadly)
+    _reply->deleteLater();
+    if (toprocess == processed) {
+        toprocess = 0;
+        processed = 0;
+        waitingRequests.clear();
+    }
+}
+
+void Editor::generateOutput()
+{
+    qDebug() << this->toHtml() << "\n";
+    imageInclusion.indexIn(this->toHtml());
+    int MaxCaptures = imageInclusion.matchedLength();
+    for (int i = 0; i < MaxCaptures; ++i) {
+        if (imageInclusion.cap(i).contains(imageInclusion)) {
+            qDebug() << imageInclusion.cap(i);
+        }
+    }
 }
 
 void Editor::setMargin(qreal v)
@@ -64,8 +191,9 @@ void Editor::imageInsertion()
                                     "JPEG (*.jpg *jpeg)\n"
                                     "GIF (*.gif)\n"
                                     "PNG (*.png)\n"));
-    QUrl Uri(QString("file://%1").arg(file));
-    imageInsertionByPath(Uri);
+    if (file != "file://") {
+        imageInsertionByPath(QUrl(QString("file://%1").arg(file)));
+    }
  }
 
 void Editor::imageInsertionByPath(QUrl URI)
@@ -90,33 +218,36 @@ bool Editor::canInsertFromMimeData(const QMimeData *source) const
         }
         i++;
     }
-    return false;
+    //Maybe QTextEdit handles something we support ourselves, less work!
+    return this->QTextEdit::canInsertFromMimeData(source);
 }
 
 void Editor::insertFromMimeData(const QMimeData *source)
 {
     int i = 0;
     bool oneIsNotSupported = false;
-    while (i<source->urls().length()) {
-        if (source->urls().at(i).toString().contains(imageSupport)) {
-            imageInsertionByPath(source->urls().at(i));
-            source->urls().removeAt(i);
-        } else {
-            oneIsNotSupported = true;
-        }
-        i++;
-    }
-    if (oneIsNotSupported == true) {
-        if (QTextEdit::canInsertFromMimeData(source)) {
-            QTextEdit::insertFromMimeData(source);
-        }
+    if (source->hasText() && source->hasText() == false) {
+        textCursor().insertText(source->text());
+    } else if (source->hasHtml() && source->hasUrls() == false) {
+        textCursor().insertHtml(source->html());
+    } else if (source->hasUrls()) {
+        while (i<source->urls().length()) {
+           if (source->urls().at(i).toString().contains(imageSupport)) {
+               imageInsertionByPath(source->urls().at(i));
+               source->urls().removeAt(i);
+           } else {
+               oneIsNotSupported = true;
+           }
+           i++;
+       }
     }
 }
 
-void Editor::mouseReleaseEvent(QMouseEvent * event)
+// Editor::handlePinch() sometimes leads to issues when you have an image and some text or just \n at bottom
+bool Editor::handlePinch(QMouseEvent *event)
 {
     int pos = this->document()->documentLayout()->hitTest(event->pos(), Qt::HitTestAccuracy::ExactHit);
-    qDebug() << "Clicke>d" << pos;
+    m_storage->isAnImage = false;
     if(pos>-1)
     {
         QTextCursor cursor(document());
@@ -124,16 +255,63 @@ void Editor::mouseReleaseEvent(QMouseEvent * event)
         if(!cursor.atEnd())
         {
             cursor.setPosition(pos+1);
+            qDebug() << cursor.position();
             QTextFormat format = cursor.charFormat();
             if(format.isImageFormat())
             {
-                ImageViewer viewer;
-                viewer.open(format.toImageFormat().name());
-                viewer.exec();
+                if (event->button() == Qt::MouseButton::LeftButton) {
+
+                    ImageViewer viewer;
+                    QImage i = document()->resource(QTextDocument::ImageResource, format.toImageFormat().name()).value<QImage>();
+                    qDebug() << "values for the image: " << i.isNull()
+                             << " | " << format.toImageFormat().name()
+                             << " | " << document()->resource(QTextDocument::ImageResource, format.toImageFormat().name())
+                             << " | " << document()->resource(QTextDocument::ImageResource, format.toImageFormat().name()).value<QImage>();
+                    viewer.open(i);
+                    viewer.exec();
+                }
+                m_storage->isAnImage = true;
             }
         }
     }
-    QTextEdit::mouseReleaseEvent(event);
+    return false;
+}
+
+void Editor::popupMenu(QMenu *m)
+{
+    m->exec(this->cursor().pos());
+}
+
+void Editor::mouseReleaseEvent(QMouseEvent * event)
+
+{
+    if (lockMouse == false) {
+        QTextEdit::mouseReleaseEvent(event);
+    }
+}
+
+void Editor::mousePressEvent(QMouseEvent *event)
+{
+    oldPos = this->textCursor().position();
+    lockMouse = handlePinch(event);
+    if (lockMouse == false) {
+        QTextEdit::mousePressEvent(event);
+    }
+}
+
+void Editor::removeUnderCursor()
+{
+    if (oldPos == this->document()->characterCount()-1) {oldPos--;}
+    QTextCursor tmp = this->textCursor();
+    tmp.setPosition(oldPos, QTextCursor::MoveMode::KeepAnchor);
+    this->setTextCursor(tmp);
+    this->textCursor().movePosition(QTextCursor::MoveOperation::NextCharacter, QTextCursor::MoveMode::KeepAnchor);
+    this->textCursor().deleteChar();
+}
+
+void Editor::contextMenuEvent(QContextMenuEvent *event)
+{
+    m_storage->selectionOptions()->exec(event->globalPos());
 }
 
 MobileStorage::MobileStorage(QObject *parent) : QObject(parent) {
@@ -212,8 +390,7 @@ MobileStorage::~MobileStorage() {
     family->~QComboBox();
 }
 
-void MobileStorage::setTextCharFormat(QTextCharFormat cur, bool empty) {
-    skipNext = empty;
+void MobileStorage::setTextCharFormat(QTextCharFormat cur) {
     m_format = cur;
     pointSize->setValue(cur.fontPointSize());
     family->setCurrentText(cur.fontFamily());
@@ -244,11 +421,10 @@ QList<QAction*> makeStyles(QStringList styles, QActionGroup *group)
 
 QMenu *MobileStorage::mtextStyles()
 {
-    //skipNext = true;
     if (m_textStyles == nullptr) {
         m_textStyles = new QMenu;
-        QAction *act = m_textStyles->addAction(tr("Add image"));
-        connect(act, &QAction::triggered, this, &MobileStorage::addImage);
+        QAction *out = m_textStyles->addAction(tr("Output as HTML"));
+        connect(out, &QAction::triggered, this, &MobileStorage::makeOutput);
     }
     if (styleGroup == nullptr) {
         styleGroup = new QActionGroup(m_textStyles);
@@ -272,7 +448,6 @@ QMenu *MobileStorage::mtextStyles()
 
 QMenu *MobileStorage::mchangeCase()
 {
-    //skipNext = true;
     if (m_changeCase == nullptr) {
         m_changeCase = new QMenu;
         QAction *capitol = m_changeCase->addAction(tr("Capitalize"));
@@ -289,7 +464,6 @@ QMenu *MobileStorage::mchangeCase()
 
 QMenu *MobileStorage::mbackgroundc()
 {
-    //skipNext = true;
     if (m_backgroundc == nullptr) {
         m_backgroundc = new QMenu;
         QActionGroup *group = new QActionGroup(m_backgroundc);
@@ -301,9 +475,51 @@ QMenu *MobileStorage::mbackgroundc()
     return m_backgroundc;
 }
 
+QMenu *MobileStorage::selectionOptions()
+{
+    if (isAnImage == true) {
+        if (mimageOptions == nullptr) {
+            mimageOptions = new QMenu;
+            QAction *rm = mimageOptions->addAction(tr("Remove image"));
+            QAction *bwr = mimageOptions->addAction(tr("Show file"));
+
+            connect(rm, &QAction::triggered, this, &MobileStorage::reqRmUnderCursor);
+            connect(bwr, &QAction::triggered,  this, &MobileStorage::openInBrowser);
+        }
+        return mimageOptions;
+    } else {
+        QMenu *ma = editor->createStandardContextMenu();
+        QMenu *m = new QMenu(tr("Add an image"));
+        QAction *act = m->addAction(tr("Locally"));
+        QAction *act2 = m->addAction(tr("From th web"));
+        connect(act, &QAction::triggered, this, &MobileStorage::addImage);
+        connect(act2, &QAction::triggered, this, [this](){
+            DDialog *d = new DDialog;
+            DLineEdit *e = new DLineEdit;
+            DLabel *b = new DLabel;
+            QWidget w;
+            QVBoxLayout *l = new QVBoxLayout;
+            l->addWidget(b);
+            l->addWidget(e);
+            b->setText(tr("Enter the URL to the image here"));
+            w.setLayout(l);
+            d->addContent(&w);
+            connect(e, &DLineEdit::editingFinished, this, [this, e](){editor->parseImageResourceRequest(e->text());});
+            d->exec();
+        });
+        ma->addMenu(m);
+        ma->deleteLater();
+        return ma;
+    }
+}
+
+void MobileStorage::selectionMenuPopup()
+{
+    Q_EMIT reqMenuPopup(selectionOptions());
+}
+
 QMenu *MobileStorage::mforegroundc()
 {
-    //skipNext = true;
     if (m_foregroundc == nullptr) {
         m_foregroundc = new QMenu;
         QActionGroup *group = new QActionGroup(m_foregroundc);
@@ -317,7 +533,6 @@ QMenu *MobileStorage::mforegroundc()
 
 QMenu *MobileStorage::mextras()
 {
-    //skipNext = true;
     if (m_extras == nullptr) {
         m_extras = new QMenu;
     }
@@ -354,7 +569,6 @@ QList<QWidget*> MobileStorage::getBar()
 
 void MobileStorage::update()
 {
-    skipNext = false;
     Q_EMIT requestChanges(m_format);
 }
 
@@ -426,4 +640,9 @@ void MobileStorage::toggleUnderline()
     m_format.setUnderlineStyle(QTextCharFormat::UnderlineStyle::SingleUnderline);
     m_format.font().setUnderline(m_format.font().underline());
     update();
+}
+
+void MobileStorage::openInBrowser()
+{
+    QDesktopServices::openUrl(m_format.toImageFormat().name());
 }

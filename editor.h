@@ -12,6 +12,8 @@
 #include <QMenu>
 #include <DSpinBox>
 #include <DComboBox>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
 
 #define CYELLOW Qt::yellow
 #define CORANGE QColor::fromRgb(244, 67, 54)
@@ -30,6 +32,8 @@
 
 DWIDGET_USE_NAMESPACE
 
+class Editor;
+
 class MobileStorage : public QObject {
     Q_OBJECT
 public:
@@ -43,17 +47,26 @@ public:
     QMenu *mforegroundc();
     QMenu *mbackgroundc();
     QMenu *mextras();
+    QMenu *selectionOptions();
 
     QHash<QString, QColor> colorHash;
     QHash<QString, QAction*> styleHash;
+    bool isAnImage = false;
+
+    Editor *editor = nullptr;
 
 Q_SIGNALS:
     void requestChanges(QTextCharFormat format);
     void addImage();
+    void makeOutput();
+    void reqRmUnderCursor();
+    void reqMenuPopup(QMenu*);
+    void requestImageByURL(QUrl u);
 
 public Q_SLOTS:
-    void setTextCharFormat(QTextCharFormat format, bool emptySelection);
+    void setTextCharFormat(QTextCharFormat format);
     void update();
+    void selectionMenuPopup();
 
 protected Q_SLOTS:
     void changeBg(QAction *);
@@ -70,6 +83,7 @@ protected Q_SLOTS:
     void toggleUnderline();
     void toggleItalic();
     void toggleOverline();
+    void openInBrowser();
 
 protected:
     DOpenIconButton *textStyles = nullptr;
@@ -87,17 +101,20 @@ protected:
     QMenu *m_backgroundc = nullptr;
     QMenu *m_changeCase = nullptr;
     QMenu *m_extras = nullptr;
+    QMenu *mimageOptions = nullptr;
+    QMenu *m_otherHandling = nullptr;
 
     QAction *overline = nullptr;
     QAction *italic = nullptr;
     QAction *underline = nullptr;
 
     QActionGroup *styleGroup = nullptr;
+    QTextImageFormat *m_if = nullptr;
+
     QTextCharFormat m_format;
     QString oldFont;
 
     bool firstShown = true;
-    bool skipNext = false; //Used for issue when opening a QMenu.
 };
 
 class Editor : public QTextEdit
@@ -109,8 +126,10 @@ public:
     void setContent(QString data);
     void setMargin(qreal value);
 
+    QWidget *downBar = nullptr;
     QTextCharFormat format();
     MobileStorage *storage();
+    static QNetworkRequest generate(QUrl p);
 
 Q_SIGNALS:
     void newWidthAvailable(int w);
@@ -120,15 +139,34 @@ public Q_SLOTS:
     void applyTextCursor(QTextCharFormat format);
     void imageInsertion();
     void imageInsertionByPath(QUrl URI);
+    void generateOutput();
+    void removeUnderCursor();
+    void popupMenu(QMenu *);
+    void error(QNetworkReply::NetworkError);
+    void updateProgress(qint64 a, qint64 total);
+    void finished();
+    void parseImageResourceRequest(QUrl path);
 
 protected:
     void insertFromMimeData(const QMimeData *source) override;
     bool canInsertFromMimeData(const QMimeData *source) const override;
     void mouseReleaseEvent(QMouseEvent *e) override;
+    void mousePressEvent(QMouseEvent *e) override;
+    void resizeEvent(QResizeEvent *e) override;
+    void contextMenuEvent(QContextMenuEvent *e) override;
+    bool handlePinch(QMouseEvent *e);
 
 private:
-    QString privateTest = "LOL it works bruh";
     MobileStorage *m_storage = nullptr;
+    bool lockMouse = false;
+    int oldPos = 0;
+    QNetworkAccessManager *m_manager;
+    QNetworkRequest request;
+    QNetworkReply *_reply;
+    int toprocess = 0;
+    int processed = 0;
+    bool loadingData = false;
+    QSet<QUrl> waitingRequests;
 };
 
 #endif // EDITOR_H

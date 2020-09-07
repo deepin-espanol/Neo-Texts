@@ -45,6 +45,8 @@ public:
 
 #ifndef QT_NO_MENU
     QMenu *menu() const;
+    QMenu *leftMenu() const;
+    void setLeftMenu(QMenu *menu);
     void setMenu(QMenu *menu);
 #endif
 

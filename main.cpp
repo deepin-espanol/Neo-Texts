@@ -8,6 +8,7 @@
 #include <iostream>
 #include <string>
 
+#include <QDir>
 #include <QDebug>
 #include <QHBoxLayout>
 #include <DIconButton>
@@ -61,6 +62,9 @@ int main(int argc, char *argv[])
     QHBoxLayout *controls = new QHBoxLayout;
     bl->setLayout(controls);
     addWidgets(editor->storage()->getBar(), controls);
+    QAction *act = wi.splitedbar()->menu()->addAction(QObject::tr("Clean FS cache"));
+
+    QObject::connect(act, &QAction::triggered, editor, []() {QDir d("/tmp/neotexts"); qDebug() << "Cleaning"; d.rmdir("/tmp/neotexts");});
 
     return a.exec();
 }
