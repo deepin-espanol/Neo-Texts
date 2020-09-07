@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
     addWidgets(editor->storage()->getBar(), controls);
     QAction *act = wi.splitedbar()->menu()->addAction(QObject::tr("Clean FS cache"));
 
-    QObject::connect(act, &QAction::triggered, editor, []() {QDir d("/tmp/neotexts"); qDebug() << "Cleaning"; d.rmdir("/tmp/neotexts");});
+    QObject::connect(act, &QAction::triggered, editor, []() {QDir d("/tmp/neotexts"); qDebug() << "Cleaning"; d.removeRecursively();});
 
     return a.exec();
 }
