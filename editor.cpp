@@ -15,6 +15,7 @@
 #include <QDir>
 #include <DDialog>
 #include <DLineEdit>
+#include <DPushButton>
 
 const QRegExp imageSupport("[\\w\\-.]+\\.(jpg|JPG|png|PNG|gif|GIF|jpeg|JPEG)");
 QRegExp imageInclusion("<img src=\"(http|https|ftp|file)://([a-zA-Z.]*)/([a-zA-Z0-9.?%/_\\-]*).(png|jpg|gif|JPEG|PNG|GIF)\" width=\"([0-9]*)\" height=\"([0-9]*)\" />");
@@ -41,7 +42,7 @@ Editor::Editor(QWidget *parent) : QTextEdit(parent)
     connect(m_storage, &MobileStorage::makeOutput, this, &Editor::generateOutput);
     connect(m_storage, &MobileStorage::reqMenuPopup, this, &Editor::popupMenu);
     connect(m_storage, &MobileStorage::reqRmUnderCursor, this, &Editor::removeUnderCursor);
-    connect(m_storage, &MobileStorage::requestImageByURL, this, &Editor::parseImageResourceRequest);
+    //connect(m_storage, &MobileStorage::requestImageByURL, this, &Editor::parseImageResourceRequest);
     connect(document(), &QTextDocument::cursorPositionChanged, this, [this](QTextCursor cursored) {
         Q_EMIT this->newCursorAvailable(cursored.charFormat(), cursored.selectedText().isEmpty());
     });
@@ -50,16 +51,35 @@ Editor::Editor(QWidget *parent) : QTextEdit(parent)
 
 Editor::~Editor() {}
 
-void Editor::parseImageResourceRequest(QUrl u)
+void Editor::parseImageResourceRequest(QUrl u, bool handleInsertion)
 {
-    if (waitingRequests.contains(u) == false) {
-        waitingRequests << u;
-        _reply = m_manager->get(generate(u));
-        connect(_reply, &QNetworkReply::finished, this, &Editor::finished);
-        connect(_reply, qOverload<QNetworkReply::NetworkError>(&QNetworkReply::error), this, &Editor::error);
-        connect(_reply, &QNetworkReply::downloadProgress, this, &Editor::updateProgress);
-        toprocess++;
-        connect(_reply, qOverload<QNetworkReply::NetworkError>(&QNetworkReply::error), this, [this](QNetworkReply::NetworkError e) {qDebug() << e << ": " << _reply->errorString();});
+    qDebug() << "Adding to the document";
+    if (QFile("/tmp/neotexts/"+u.toString().replace("://", ":/").replace("/", "%")).exists() == false) {
+        if (waitingRequests.contains(u) == false) {
+            qDebug() << "No waiting calls for this ressource.";
+            waitingRequests << u;
+            _reply = m_manager->get(generate(u));
+            connect(_reply, &QNetworkReply::finished, this, &Editor::finished);
+            connect(_reply, qOverload<QNetworkReply::NetworkError>(&QNetworkReply::error), this, &Editor::error);
+            connect(_reply, &QNetworkReply::downloadProgress, this, &Editor::updateProgress);
+            qDebug() << "Next";
+            toprocess++;
+            connect(_reply, qOverload<QNetworkReply::NetworkError>(&QNetworkReply::error), this, [this](QNetworkReply::NetworkError e) {qDebug() << e << ": " << _reply->errorString();});
+        }
+    } else {
+        if (handleInsertion == true) {
+            qDebug() << "image already exists!";
+            QString value = "/tmp/neotexts/"+u.toString().replace("://", ":/").replace("/", "%");
+            QImage image = QImageReader(value).read();
+            qDebug() << image.isNull();
+            document()->addResource(QTextDocument::ImageResource, value, QVariant(image));
+            QTextCursor cursor = textCursor();
+            QTextImageFormat imageFormat;
+            imageFormat.setName(value);
+            imageFormat.setWidth(250);
+            imageFormat.setHeight(250);
+            cursor.insertImage(imageFormat);
+        }
     }
 }
 
@@ -75,16 +95,7 @@ void Editor::setContent(QString data)
     for (int i = 0; i < MaxCaptures; ++i) {
         if (imageInclusion.cap(i).contains(imageInclusion)) {
             qDebug() << "Image data path found";
-            QString filePath = imageURIP.match(imageInclusion.cap(0)).captured(0);
-            if (QFile("/tmp/neotexts/"+filePath.replace("://", ":/").replace("/", "%")).exists() == false) {
-                parseImageResourceRequest(imageURIP.match(imageInclusion.cap(0)).captured(0));
-            } else {
-                qDebug() << "image already exists!";
-                QString value = "/tmp/neotexts/"+filePath.replace("://", ":/").replace("/", "%");
-                qDebug() << value;
-                QImage i = QImageReader(value).read();
-                document()->addResource(QTextDocument::ImageResource, QUrl(value), QVariant(i));
-            }
+            parseImageResourceRequest(imageURIP.match(imageInclusion.cap(0)).captured(0), false);
         }
     }
     QString translated = data;
@@ -129,6 +140,7 @@ void Editor::updateProgress(qint64 read, qint64 total)
 
 void Editor::finished()
 {
+    qDebug() << "Processing received request";
     processed++;
     QByteArray b = _reply->readAll();
     QString result = "/tmp/neotexts/"+_reply->url().toString().replace("://", ":/").replace("/", "%");
@@ -138,8 +150,10 @@ void Editor::finished()
     QDataStream out(&file);
     file.write(b);
     file.close();
+    qDebug() << "Save ended";
     QImage i = QImageReader(b).read();
     document()->addResource(QTextDocument::ImageResource, QUrl(result), QVariant(i));
+    qDebug() << "Updating layout visual";
     this->setLineWrapColumnOrWidth(this->lineWrapColumnOrWidth()); //Only way to make it reload our images (sadly)
     _reply->deleteLater();
     if (toprocess == processed) {
@@ -147,6 +161,59 @@ void Editor::finished()
         processed = 0;
         waitingRequests.clear();
     }
+}
+
+void Editor::showURLInput()
+{
+    DDialog *d = new DDialog;
+    QVBoxLayout *mainL = new QVBoxLayout(d);
+    QHBoxLayout *subL = new QHBoxLayout(d);
+    DLabel *l = new DLabel(d);
+    DPushButton *cancel = new DPushButton(d);
+    DPushButton *submit = new DPushButton(d);
+    QWidget *container = new QWidget(d);
+    QLineEdit *edit = new QLineEdit(d);
+    DIconButton *clear = new DIconButton(d);
+    QHBoxLayout *editL = new QHBoxLayout(d);
+
+    submit->setText(tr("Confirm"));
+    cancel->setText(tr("Cancel"));
+    l->setText(tr("Select the image URl"));
+
+    clear->setIconSize(QSize(16, 16));
+    clear->setFixedSize(16, 16);
+    clear->setVisible(false);
+    clear->setFlat(true);
+    clear->setAccessibleName("Clear");
+    connect(clear, &DIconButton::clicked, edit, &QLineEdit::clear);
+
+    editL->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum));
+    editL->addWidget(clear);
+    edit->setPlaceholderText(tr("http://path.to.image/gif/png/jpg.jpeg"));
+    edit->setLayout(editL);
+
+    mainL->addWidget(l);
+    mainL->addWidget(edit);
+    mainL->addLayout(subL);
+    subL->addWidget(submit);
+    subL->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum));
+    subL->addWidget(cancel);
+    container->setLayout(mainL);
+    d->addContent(container);
+
+    connect(cancel, &DPushButton::clicked, this, [d]() {d->~DDialog();});
+    connect(edit, &QLineEdit::returnPressed, this, [d, edit, container, this]() {
+        this->parseImageResourceRequest(edit->text(), true);
+        container->~QWidget();
+        d->close();
+    });
+    connect(submit, &DPushButton::clicked, this, [d, edit, container, this] {
+        this->parseImageResourceRequest(edit->text(), true);
+        container->~QWidget();
+        d->close();
+    });
+
+    d->exec();
 }
 
 void Editor::generateOutput()
@@ -493,20 +560,7 @@ QMenu *MobileStorage::selectionOptions()
         QAction *act = m->addAction(tr("Locally"));
         QAction *act2 = m->addAction(tr("From th web"));
         connect(act, &QAction::triggered, this, &MobileStorage::addImage);
-        connect(act2, &QAction::triggered, this, [this](){
-            DDialog *d = new DDialog;
-            DLineEdit *e = new DLineEdit;
-            DLabel *b = new DLabel;
-            QWidget w;
-            QVBoxLayout *l = new QVBoxLayout;
-            l->addWidget(b);
-            l->addWidget(e);
-            b->setText(tr("Enter the URL to the image here"));
-            w.setLayout(l);
-            d->addContent(&w);
-            connect(e, &DLineEdit::editingFinished, this, [this, e](){editor->parseImageResourceRequest(e->text());});
-            d->exec();
-        });
+        connect(act2, &QAction::triggered, editor, &Editor::showURLInput);
         ma->addMenu(m);
         ma->deleteLater();
         return ma;

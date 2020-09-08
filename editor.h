@@ -145,7 +145,8 @@ public Q_SLOTS:
     void error(QNetworkReply::NetworkError);
     void updateProgress(qint64 a, qint64 total);
     void finished();
-    void parseImageResourceRequest(QUrl path);
+    void parseImageResourceRequest(QUrl path, bool handleInsertion = false);
+    void showURLInput();
 
 protected:
     void insertFromMimeData(const QMimeData *source) override;
