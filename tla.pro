@@ -43,7 +43,7 @@ SOURCES += \
     diconlookup.cpp \
     editor.cpp \
     dopeniconbutton.cpp \
-    imagepopup.cpp
+    imagepopup.cpp \
 
 HEADERS += \
     multicolors.h \
@@ -53,7 +53,8 @@ HEADERS += \
     diconlookup.h \
     editor.h \
     dopeniconbutton.h \
-    imagepopup.h
+    imagepopup.h \
+    function_helpers.h \
 
 FORMS += \
         mainwindow.ui
@@ -70,3 +71,5 @@ RESOURCES += \
     main.qrc
 
 unix:!macx: LIBS += -ldl
+
+unix:!macx: LIBS += -lKF5Wallet

@@ -138,7 +138,7 @@ Q_SIGNALS:
 public Q_SLOTS:
     void applyTextCursor(QTextCharFormat format);
     void imageInsertion();
-    void imageInsertionByPath(QUrl URI);
+    void imageInsertionByPath(QUrl URI, bool isLocalFS = false);
     void generateOutput();
     void removeUnderCursor();
     void popupMenu(QMenu *);

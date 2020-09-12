@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "imagepopup.h"
+#include "function_helpers.h"
 
 #include <QDebug>
 #include <QApplication>
@@ -26,6 +27,9 @@ const QRegularExpression imageURIP("(http|https|ftp|file)://([a-zA-Z0-9.]+)([a-z
                                    | QRegularExpression::DotMatchesEverythingOption
                                    | QRegularExpression::CaseInsensitiveOption);
 
+const QString imageBegin = "<img src=\"data:image/";
+const QString imageEnding = "\" height=\"250\" width=\"250\"/>";
+
 Editor::Editor(QWidget *parent) : QTextEdit(parent)
 {
     m_storage = new MobileStorage;
@@ -42,7 +46,6 @@ Editor::Editor(QWidget *parent) : QTextEdit(parent)
     connect(m_storage, &MobileStorage::makeOutput, this, &Editor::generateOutput);
     connect(m_storage, &MobileStorage::reqMenuPopup, this, &Editor::popupMenu);
     connect(m_storage, &MobileStorage::reqRmUnderCursor, this, &Editor::removeUnderCursor);
-    //connect(m_storage, &MobileStorage::requestImageByURL, this, &Editor::parseImageResourceRequest);
     connect(document(), &QTextDocument::cursorPositionChanged, this, [this](QTextCursor cursored) {
         Q_EMIT this->newCursorAvailable(cursored.charFormat(), cursored.selectedText().isEmpty());
     });
@@ -53,25 +56,21 @@ Editor::~Editor() {}
 
 void Editor::parseImageResourceRequest(QUrl u, bool handleInsertion)
 {
-    qDebug() << "Adding to the document";
+    qDebug() << u.toString() << "\n" << relativeToStaticPath(u.toString(), "../kk.png");
     if (QFile("/tmp/neotexts/"+u.toString().replace("://", ":/").replace("/", "%")).exists() == false) {
         if (waitingRequests.contains(u) == false) {
-            qDebug() << "No waiting calls for this ressource.";
             waitingRequests << u;
             _reply = m_manager->get(generate(u));
             connect(_reply, &QNetworkReply::finished, this, &Editor::finished);
             connect(_reply, qOverload<QNetworkReply::NetworkError>(&QNetworkReply::error), this, &Editor::error);
             connect(_reply, &QNetworkReply::downloadProgress, this, &Editor::updateProgress);
-            qDebug() << "Next";
             toprocess++;
             connect(_reply, qOverload<QNetworkReply::NetworkError>(&QNetworkReply::error), this, [this](QNetworkReply::NetworkError e) {qDebug() << e << ": " << _reply->errorString();});
         }
     } else {
         if (handleInsertion == true) {
-            qDebug() << "image already exists!";
             QString value = "/tmp/neotexts/"+u.toString().replace("://", ":/").replace("/", "%");
             QImage image = QImageReader(value).read();
-            qDebug() << image.isNull();
             document()->addResource(QTextDocument::ImageResource, value, QVariant(image));
             QTextCursor cursor = textCursor();
             QTextImageFormat imageFormat;
@@ -94,7 +93,6 @@ void Editor::setContent(QString data)
     int MaxCaptures = imageInclusion.matchedLength();
     for (int i = 0; i < MaxCaptures; ++i) {
         if (imageInclusion.cap(i).contains(imageInclusion)) {
-            qDebug() << "Image data path found";
             parseImageResourceRequest(imageURIP.match(imageInclusion.cap(0)).captured(0), false);
         }
     }
@@ -104,11 +102,9 @@ void Editor::setContent(QString data)
         if (imageInclusion.cap(i).contains(imageInclusion)) {
             QString filePath = imageURIP.match(imageInclusion.cap(0)).captured(0);
             QString result = "/tmp/neotexts/"+filePath.replace("://", ":/").replace("/", "%");
-            qDebug() << "\nLooking for:" << imageURIP.match(imageInclusion.cap(0)).captured(0) << "\n\nTo replace with:" << result << "\n";
             translated.replace(imageURIP.match(imageInclusion.cap(0)).captured(0), result);
         }
     }
-    qDebug() << translated;
     this->setHtml(translated);
     this->setMargin(50);
     this->document()->clearUndoRedoStacks();
@@ -123,7 +119,6 @@ QNetworkRequest Editor::generate(QUrl p)
 
 void Editor::resizeEvent(QResizeEvent *e)
 {
-   // Q_EMIT sizeChanged(QSize(e->size().width(), e->size().height()-80));
     this->QTextEdit::resizeEvent(e);
 }
 
@@ -135,25 +130,25 @@ void Editor::error(QNetworkReply::NetworkError err)
 
 void Editor::updateProgress(qint64 read, qint64 total)
 {
-    qDebug() << "Download state: " << read << "/" << total;
+    if (total != 0) {
+        qDebug() << "Download state: " << read*100/total;
+    } else {
+        qDebug() << "Download state: " << read << "/" << total;
+    }
 }
 
 void Editor::finished()
 {
-    qDebug() << "Processing received request";
     processed++;
     QByteArray b = _reply->readAll();
     QString result = "/tmp/neotexts/"+_reply->url().toString().replace("://", ":/").replace("/", "%");
-    qDebug() << result;
     QFile file(result);
     file.open(QIODevice::WriteOnly);
     QDataStream out(&file);
     file.write(b);
     file.close();
-    qDebug() << "Save ended";
     QImage i = QImageReader(b).read();
     document()->addResource(QTextDocument::ImageResource, QUrl(result), QVariant(i));
-    qDebug() << "Updating layout visual";
     this->setLineWrapColumnOrWidth(this->lineWrapColumnOrWidth()); //Only way to make it reload our images (sadly)
     _reply->deleteLater();
     if (toprocess == processed) {
@@ -219,13 +214,6 @@ void Editor::showURLInput()
 void Editor::generateOutput()
 {
     qDebug() << this->toHtml() << "\n";
-    imageInclusion.indexIn(this->toHtml());
-    int MaxCaptures = imageInclusion.matchedLength();
-    for (int i = 0; i < MaxCaptures; ++i) {
-        if (imageInclusion.cap(i).contains(imageInclusion)) {
-            qDebug() << imageInclusion.cap(i);
-        }
-    }
 }
 
 void Editor::setMargin(qreal v)
@@ -259,21 +247,27 @@ void Editor::imageInsertion()
                                     "GIF (*.gif)\n"
                                     "PNG (*.png)\n"));
     if (file != "file://") {
-        imageInsertionByPath(QUrl(QString("file://%1").arg(file)));
+        imageInsertionByPath(QUrl(QString("file://%1").arg(file)), true);
     }
  }
 
-void Editor::imageInsertionByPath(QUrl URI)
+void Editor::imageInsertionByPath(QUrl URI, bool isLocalFS)
 {
-    QImage image = QImageReader(URI.toString()).read();
-    qDebug() << image.isNull();
-    document()->addResource(QTextDocument::ImageResource, URI, QVariant(image));
-    QTextCursor cursor = textCursor();
-    QTextImageFormat imageFormat;
-    imageFormat.setName(URI.toString());
-    imageFormat.setWidth(250);
-    imageFormat.setHeight(250);
-    cursor.insertImage(imageFormat);
+    if (isLocalFS == true) {
+        QFile f(URI.path());
+        f.open(QIODevice::OpenModeFlag::ReadOnly);
+        textCursor().insertHtml(binded64(f.readAll(), imageBegin + URI.toString().split(".").last().toLower() + ";base64,", imageEnding));
+        this->setLineWrapColumnOrWidth(this->lineWrapColumnOrWidth());
+    } else {
+        QImage image = QImageReader(URI.toString()).read();
+        document()->addResource(QTextDocument::ImageResource, URI, QVariant(image));
+        QTextCursor cursor = textCursor();
+        QTextImageFormat imageFormat;
+        imageFormat.setName(URI.toString());
+        imageFormat.setWidth(250);
+        imageFormat.setHeight(250);
+        cursor.insertImage(imageFormat);
+    }
 }
 
 bool Editor::canInsertFromMimeData(const QMimeData *source) const
@@ -322,7 +316,6 @@ bool Editor::handlePinch(QMouseEvent *event)
         if(!cursor.atEnd())
         {
             cursor.setPosition(pos+1);
-            qDebug() << cursor.position();
             QTextFormat format = cursor.charFormat();
             if(format.isImageFormat())
             {
@@ -330,10 +323,6 @@ bool Editor::handlePinch(QMouseEvent *event)
 
                     ImageViewer viewer;
                     QImage i = document()->resource(QTextDocument::ImageResource, format.toImageFormat().name()).value<QImage>();
-                    qDebug() << "values for the image: " << i.isNull()
-                             << " | " << format.toImageFormat().name()
-                             << " | " << document()->resource(QTextDocument::ImageResource, format.toImageFormat().name())
-                             << " | " << document()->resource(QTextDocument::ImageResource, format.toImageFormat().name()).value<QImage>();
                     viewer.open(i);
                     viewer.exec();
                 }
@@ -475,12 +464,10 @@ void makeColorActions(QHash<QString, QColor> hash, QActionGroup *m)
 
 QList<QAction*> makeStyles(QStringList styles, QActionGroup *group)
 {
-    qDebug() << "making style actions with: " << styles;
     QList<QAction *> data;
     int i = 0;
     while(i<styles.length()) {
         data << group->addAction(styles.at(i));
-        qDebug() << styles.at(i);
         i++;
     }
     return data;

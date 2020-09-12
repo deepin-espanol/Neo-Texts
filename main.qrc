@@ -1,6 +1,5 @@
 <RCC>
     <qresource prefix="/">
-        <file>icons/palette-solid.svg</file>
         <file>missing.svg</file>
         <file>icons/background.svg</file>
         <file>icons/edit-regular.svg</file>
