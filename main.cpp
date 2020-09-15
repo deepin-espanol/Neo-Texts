@@ -4,6 +4,7 @@
 #include "diconlookup.h"
 #include "dsplitedbar.h"
 #include "editor.h"
+#include "ioop.h"
 
 #include <iostream>
 #include <string>
@@ -65,6 +66,20 @@ int main(int argc, char *argv[])
     QAction *act = wi.splitedbar()->menu()->addAction(QObject::tr("Clean FS cache"));
 
     QObject::connect(act, &QAction::triggered, editor, []() {QDir d("/tmp/neotexts"); qDebug() << "Cleaning"; d.rmdir("/tmp/neotexts");});
+
+    wi.splitedbar()->leftMenu()->clear();
+    // [TODO] save and saveAs's slots are exchanged because slot names don't corresponds!!
+    QAction *saveAs = wi.splitedbar()->leftMenu()->addAction(QObject::tr("Save file"));
+    QAction *save = wi.splitedbar()->leftMenu()->addAction(QObject::tr("Save file as"));
+    QAction *open = wi.splitedbar()->leftMenu()->addAction(QObject::tr("Open local file"));
+
+    QObject::connect(saveAs, &QAction::triggered, editor, &Editor::saveAsRequest);
+    QObject::connect(save, &QAction::triggered, editor, &Editor::saveRequest);
+    QObject::connect(open, &QAction::triggered, IOOP::instance(), &IOOP::uiOpenFile);
+
+    save->setShortcut(QKeySequence(Qt::Key_Control + Qt::Key_Shift + Qt::Key_S));
+    saveAs->setShortcut(QKeySequence(Qt::Key_Control + Qt::Key_S));
+    open->setShortcut(QKeySequence(Qt::Key_Control + Qt::Key_O));
 
     return a.exec();
 }

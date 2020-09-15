@@ -26,12 +26,12 @@
 #include <QDateTime>
 #include <DNotifySender>
 
+using Sender = Dtk::Core::DUtil::DNotifySender;
+
 const int MAX_STACK_FRAMES = 128;
 const QString strPath = QStandardPaths::standardLocations(QStandardPaths::ConfigLocation)[0] + "/dde-collapse.log";
 const QString cfgPath = QStandardPaths::standardLocations(QStandardPaths::ConfigLocation)[0] + "/dde-cfg.ini";
 QString appBinPath = "None";
-
-using Sender = Dtk::Core::DUtil::DNotifySender;
 
 std::string Backtrace(int skip = 1)
 {
@@ -169,6 +169,7 @@ void handleSignals [[ noreturn ]] (int sig)
         case SIGABRT: sigVal = "SIGABRT"; break;
         case SIGFPE: sigVal = "SIGFPE"; break;
         }
+
         DWIDGET_USE_NAMESPACE
         Sender send("Application crashed");
         send.timeOut(3000);

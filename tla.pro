@@ -44,6 +44,8 @@ SOURCES += \
     editor.cpp \
     dopeniconbutton.cpp \
     imagepopup.cpp \
+    mobilestorage.cpp \
+    ioop.cpp
 
 HEADERS += \
     multicolors.h \
@@ -54,7 +56,10 @@ HEADERS += \
     editor.h \
     dopeniconbutton.h \
     imagepopup.h \
-    function_helpers.h \
+    helperclass.h \
+    mobilestorage.h \
+    helpers.h \
+    ioop.h
 
 FORMS += \
         mainwindow.ui

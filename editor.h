@@ -2,127 +2,24 @@
 #define EDITOR_H
 
 #include "dopeniconbutton.h"
+#include "mobilestorage.h"
 
 #include <QTextEdit>
 #include <QTextEdit>
 #include <QTextDocument>
 #include <QTextFrame>
 #include <QTextCursor>
-#include <QSpinBox>
-#include <QMenu>
-#include <DSpinBox>
-#include <DComboBox>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 
-#define CYELLOW Qt::yellow
-#define CORANGE QColor::fromRgb(244, 67, 54)
-#define CRED Qt::red
-#define CPINK QColor::fromRgb(255, 80, 140)
-#define CPURPLE QColor::fromRgb(156, 39, 176)
-#define CCYAN QColor::fromRgb(0, 204, 175)
-#define CAZURE QColor::fromRgb(0, 188, 212)
-#define CBLUE Qt::blue
-#define CBLACK Qt::black
-#define CPEAR QColor::fromRgb(139, 195, 74)
-#define CGREEN Qt::green
-#define CGRAY Qt::gray
-#define CWHITE Qt::white
-#define CMARINBLUE QColor::fromRgb(63, 81, 181)
-
 DWIDGET_USE_NAMESPACE
 
-class Editor;
-
-class MobileStorage : public QObject {
-    Q_OBJECT
-public:
-    explicit MobileStorage(QObject *parent = nullptr);
-    ~MobileStorage();
-
-    QList<QWidget *> getBar();
-
-    QMenu *mtextStyles();
-    QMenu *mchangeCase();
-    QMenu *mforegroundc();
-    QMenu *mbackgroundc();
-    QMenu *mextras();
-    QMenu *selectionOptions();
-
-    QHash<QString, QColor> colorHash;
-    QHash<QString, QAction*> styleHash;
-    bool isAnImage = false;
-
-    Editor *editor = nullptr;
-
-Q_SIGNALS:
-    void requestChanges(QTextCharFormat format);
-    void addImage();
-    void makeOutput();
-    void reqRmUnderCursor();
-    void reqMenuPopup(QMenu*);
-    void requestImageByURL(QUrl u);
-
-public Q_SLOTS:
-    void setTextCharFormat(QTextCharFormat format);
-    void update();
-    void selectionMenuPopup();
-
-protected Q_SLOTS:
-    void changeBg(QAction *);
-    void changeFg(QAction *);
-    void changeFontFamily(QString key);
-    void changeFontStyle(QAction *);
-    void changeFontPointSize(double v);
-    void changeFontWeight(int v);
-    void makeUpperCase();
-    void makeSmallCaps();
-    void makeLowerCase();
-    void makeCapitalization();
-    void changeFontCaps(QFont::Capitalization cap);
-    void toggleUnderline();
-    void toggleItalic();
-    void toggleOverline();
-    void openInBrowser();
-
-protected:
-    DOpenIconButton *textStyles = nullptr;
-    DOpenIconButton *foregroundc = nullptr;
-    DOpenIconButton *backgroundc = nullptr;
-    DOpenIconButton *changeCase = nullptr;
-    DOpenIconButton *extras = nullptr;
-    DComboBox *family = nullptr;
-    QDoubleSpinBox *pointSize = nullptr;
-    QSpinBox *fontWeight = nullptr;
-    QFontDatabase *base = nullptr;
-
-    QMenu *m_textStyles = nullptr;
-    QMenu *m_foregroundc = nullptr;
-    QMenu *m_backgroundc = nullptr;
-    QMenu *m_changeCase = nullptr;
-    QMenu *m_extras = nullptr;
-    QMenu *mimageOptions = nullptr;
-    QMenu *m_otherHandling = nullptr;
-
-    QAction *overline = nullptr;
-    QAction *italic = nullptr;
-    QAction *underline = nullptr;
-
-    QActionGroup *styleGroup = nullptr;
-    QTextImageFormat *m_if = nullptr;
-
-    QTextCharFormat m_format;
-    QString oldFont;
-
-    bool firstShown = true;
-};
-
-class Editor : public QTextEdit
+class Editor : public QTextEdit, public HelperClass
 {
     Q_OBJECT
 public:
     explicit Editor(QWidget *parent = nullptr);
-    ~Editor();
+    ~Editor() override;
     void setContent(QString data);
     void setMargin(qreal value);
 
@@ -130,6 +27,8 @@ public:
     QTextCharFormat format();
     MobileStorage *storage();
     static QNetworkRequest generate(QUrl p);
+    QMenu *generateMenu() override;
+    inline QUrl getFileUrl() {return openedFile;}
 
 Q_SIGNALS:
     void newWidthAvailable(int w);
@@ -147,6 +46,14 @@ public Q_SLOTS:
     void finished();
     void parseImageResourceRequest(QUrl path, bool handleInsertion = false);
     void showURLInput();
+    void insertTable();
+    void saveRequest();
+    void saveAsRequest();
+    void setFilePath(QUrl p);
+    void insertCells(Qt::AnchorPoint p, int cellsToAdd = 1);
+    void addCells(Qt::AnchorPoint p, int cellsToAdd = 1);
+    void removeCells(Qt::AnchorPoint p, int cellsToAdd = 1);
+    void helperRequest() override;
 
 protected:
     void insertFromMimeData(const QMimeData *source) override;
@@ -167,7 +74,8 @@ private:
     int toprocess = 0;
     int processed = 0;
     bool loadingData = false;
-    QSet<QUrl> waitingRequests;
+    QList<QUrl> waitingRequests;
+    QUrl openedFile;
 };
 
 #endif // EDITOR_H
